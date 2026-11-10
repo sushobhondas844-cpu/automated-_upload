@@ -27,6 +27,6 @@ jobs:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           YOUTUBE_TOKEN_HINDI: ${{ secrets.YOUTUBE_TOKEN_HINDI }}
           YOUTUBE_TOKEN_ENGLISH: ${{ secrets.YOUTUBE_TOKEN_ENGLISH }}
-          TRACKING_SHEET_NAME: "Stickman Automation Tracker"
+          TRACKING_SHEET_NAME: "YouTube Content Pipeline & Dispatcher"
         run: |
-          python automated_publisher.py
+          python github/automated_publisher.py

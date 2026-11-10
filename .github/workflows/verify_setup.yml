@@ -25,4 +25,4 @@ jobs:
           YOUTUBE_TOKEN_HINDI: ${{ secrets.YOUTUBE_TOKEN_HINDI }}
           YOUTUBE_TOKEN_ENGLISH: ${{ secrets.YOUTUBE_TOKEN_ENGLISH }}
         run: |
-          python verify_setup.py
+          python github/verify_setup.py

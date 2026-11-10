@@ -19,3 +19,7 @@ stories/
 *.tmp
 temp_yt.html
 shorts_data.json
+
+# Video generation raw assets
+audio/
+images/
