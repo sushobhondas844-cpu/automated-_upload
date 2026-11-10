@@ -1,8 +1,10 @@
 """
-Diagnostics & Verification Script
-Runs in GitHub Action or locally to verify:
-1. Google Drive access to the master folder '1b9MZR5idAK4EqLi2akxFX-FAMycA8rDe'
-2. YouTube channel authentication for YOUTUBE_TOKEN_HINDI and YOUTUBE_TOKEN_ENGLISH
+Diagnostics & Verification Script (Updated)
+Supports:
+1. Standard Service Account JSON (service_account)
+2. User OAuth Token JSON (from forge_token.py / drive_token.json)
+3. Client Secrets JSON
+4. YouTube channel verification for HINDI and ENGLISH tokens
 """
 
 import os
@@ -17,52 +19,63 @@ MASTER_FOLDER_ID = "1b9MZR5idAK4EqLi2akxFX-FAMycA8rDe"
 
 def test_drive():
     print("="*60)
-    print("[1] TESTING GOOGLE DRIVE & SERVICE ACCOUNT ACCESS")
+    print("[1] TESTING GOOGLE DRIVE ACCESS")
     print("="*60)
-    sa_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
+    sa_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
     if not sa_json:
         print("[!] Missing secret: GOOGLE_SERVICE_ACCOUNT_JSON")
         return False
         
     try:
-        if sa_json.strip().startswith("{"):
+        if sa_json.startswith("{"):
             creds_dict = json.loads(sa_json)
         else:
             creds_dict = json.loads(base64.b64decode(sa_json).decode('utf-8'))
             
-        sa_email = creds_dict.get("client_email", "Unknown")
-        print(f"[*] Service Account Identity: {sa_email}")
+        print(f"[*] Secret JSON format detected. Top keys: {list(creds_dict.keys())}")
         
-        scopes = ["https://www.googleapis.com/auth/drive.readonly"]
-        creds = ServiceAccountCredentials.from_service_account_info(creds_dict, scopes=scopes)
+        # Check if it's a Service Account OR an OAuth User Token
+        if "client_email" in creds_dict and creds_dict.get("type") == "service_account":
+            print(f"[*] Detected Type: Google Service Account ({creds_dict.get('client_email')})")
+            scopes = ["https://www.googleapis.com/auth/drive.readonly"]
+            creds = ServiceAccountCredentials.from_service_account_info(creds_dict, scopes=scopes)
+        elif "token" in creds_dict or "refresh_token" in creds_dict:
+            print("[*] Detected Type: OAuth User Token (from drive_token.json)")
+            creds = UserCredentials.from_authorized_user_info(creds_dict, ["https://www.googleapis.com/auth/drive.readonly", "https://www.googleapis.com/auth/drive.file"])
+        elif "installed" in creds_dict or "web" in creds_dict:
+            print("[!] Detected Type: client_secrets.json (OAuth App Gateway, not an authorized token or service account)")
+            print("    -> client_secrets alone cannot authenticate without interactive login.")
+            return False
+        else:
+            print(f"[!] Unrecognized credentials structure. Keys: {list(creds_dict.keys())}")
+            return False
+
         drive = build("drive", "v3", credentials=creds)
-        
-        print(f"[*] Querying folder ID: {MASTER_FOLDER_ID}...")
+        print(f"[*] Querying master folder ID: {MASTER_FOLDER_ID}...")
         folder = drive.files().get(fileId=MASTER_FOLDER_ID, fields="id, name, mimeType").execute()
-        print(f"[+] SUCCESS! Found folder: '{folder.get('name')}' (ID: {folder.get('id')})")
+        print(f"[+] SUCCESS! Found Drive Folder: '{folder.get('name')}' (ID: {folder.get('id')})")
         
-        # Check subfolders or files
+        # List contents
         items = drive.files().list(q=f"'{MASTER_FOLDER_ID}' in parents and trashed = false", pageSize=10).execute().get("files", [])
-        print(f"[+] Found {len(items)} items inside master folder:")
+        print(f"[+] Items inside folder ({len(items)}):")
         for it in items:
             print(f"    - {it.get('name')} [{it.get('mimeType')}]")
         return True
     except Exception as e:
-        print(f"[!] FAILED to access Drive folder: {e}")
-        print(f"    -> Make sure you shared folder '1b9MZR5idAK4EqLi2akxFX-FAMycA8rDe' with: {sa_email}")
+        print(f"[!] FAILED to access Drive: {e}")
         return False
 
 def test_youtube(token_env_var, label):
     print("\n" + "="*60)
     print(f"[2] TESTING YOUTUBE CHANNEL: {label} ({token_env_var})")
     print("="*60)
-    token_str = os.environ.get(token_env_var)
+    token_str = os.environ.get(token_env_var, "").strip()
     if not token_str:
         print(f"[-] Secret {token_env_var} is not set. Skipping.")
         return False
         
     try:
-        if token_str.strip().startswith("{"):
+        if token_str.startswith("{"):
             token_dict = json.loads(token_str)
         else:
             token_dict = json.loads(base64.b64decode(token_str).decode('utf-8'))
