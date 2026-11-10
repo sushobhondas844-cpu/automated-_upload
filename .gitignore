@@ -1,0 +1,21 @@
+# Python / OS
+__pycache__/
+*.py[cod]
+*$py.class
+*.pickle
+client_secrets.json
+service_account.json
+.env
+
+# Remotion & Media Build Files
+node_modules/
+dist/
+build/
+.remotion/
+output/
+stories/
+
+# Temp
+*.tmp
+temp_yt.html
+shorts_data.json
