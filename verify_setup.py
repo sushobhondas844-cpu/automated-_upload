@@ -1,10 +1,5 @@
 """
-Diagnostics & Verification Script (Updated)
-Supports:
-1. Standard Service Account JSON (service_account)
-2. User OAuth Token JSON (from forge_token.py / drive_token.json)
-3. Client Secrets JSON
-4. YouTube channel verification for HINDI and ENGLISH tokens
+Diagnostics & Verification Script (Updated Scope Fix)
 """
 
 import os
@@ -41,10 +36,12 @@ def test_drive():
             creds = ServiceAccountCredentials.from_service_account_info(creds_dict, scopes=scopes)
         elif "token" in creds_dict or "refresh_token" in creds_dict:
             print("[*] Detected Type: OAuth User Token (from drive_token.json)")
-            creds = UserCredentials.from_authorized_user_info(creds_dict, ["https://www.googleapis.com/auth/drive.readonly", "https://www.googleapis.com/auth/drive.file"])
+            # Do NOT pass artificial scopes that conflict with the token's original granted scopes!
+            token_scopes = creds_dict.get("scopes")
+            print(f"[*] Token scopes from JSON: {token_scopes}")
+            creds = UserCredentials.from_authorized_user_info(creds_dict, scopes=token_scopes)
         elif "installed" in creds_dict or "web" in creds_dict:
             print("[!] Detected Type: client_secrets.json (OAuth App Gateway, not an authorized token or service account)")
-            print("    -> client_secrets alone cannot authenticate without interactive login.")
             return False
         else:
             print(f"[!] Unrecognized credentials structure. Keys: {list(creds_dict.keys())}")
@@ -58,6 +55,8 @@ def test_drive():
         # List contents
         items = drive.files().list(q=f"'{MASTER_FOLDER_ID}' in parents and trashed = false", pageSize=10).execute().get("files", [])
         print(f"[+] Items inside folder ({len(items)}):")
+        if not items:
+            print("    (Folder is currently empty or has no subfiles yet - perfectly ready!)")
         for it in items:
             print(f"    - {it.get('name')} [{it.get('mimeType')}]")
         return True
@@ -80,7 +79,8 @@ def test_youtube(token_env_var, label):
         else:
             token_dict = json.loads(base64.b64decode(token_str).decode('utf-8'))
             
-        creds = UserCredentials.from_authorized_user_info(token_dict, ["https://www.googleapis.com/auth/youtube.readonly"])
+        token_scopes = token_dict.get("scopes", ["https://www.googleapis.com/auth/youtube.readonly"])
+        creds = UserCredentials.from_authorized_user_info(token_dict, scopes=token_scopes)
         yt = build("youtube", "v3", credentials=creds)
         resp = yt.channels().list(part="snippet,statistics", mine=True).execute()
         items = resp.get("items", [])
