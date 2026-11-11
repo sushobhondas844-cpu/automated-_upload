@@ -95,13 +95,18 @@ Produce bright 2D / lightweight 2.5D stickman explainer videos cleanly with cons
    - Build `<Story>Video.tsx` from [`resources/StickmanExplainerTemplate.tsx`](./resources/StickmanExplainerTemplate.tsx):
      - No top loading bar; crisp 2-line Top Chapter Card; fixed `impactShake`; exact `beat.sfx` / `beat.sfxCue` SFX playback; smooth `2.5d` multi-plane parallax + whole-body `modelMotion` + light `fxAccent` accents where configured; 3-word yellow-highlighted subtitles strictly for `9:16` Shorts (`isLandscape` hides them automatically in `16:9`).
    - Run `npx tsc --noEmit`, inspect preview `remotion still` frames across `"panel"` and `"2.5d"` beats via `read_file`, render to `output/<Language>/<slug>_explainer.mp4`, inspect real extracted `.mp4` frames & muxed audio via `read_file`, and write `output/<Language>/<slug>_metadata.txt`.
-   - **Language-Specific Metadata Requirements (Mandatory for all future videos):**
+   - **Language-Specific Metadata & Pre-Publish SEO Research (Mandatory for all future videos):**
+     - **Pre-Metadata SEO & Viral Keyword Research (Run Before Writing Metadata):**
+       - Perform a search/research step for the specific topic and niche to identify the most viral, gripping titles, high-velocity search queries, and trending hashtags for both English and Indian audiences.
      - **English Videos (`output/English/<slug>_metadata.txt`):** 
-       - English title, high-retention English description, English keywords, and targeted hashtags (`#Shorts`, `#Facts`, `#Curiosity`).
+       - **Title:** High-CTR, curiosity-driven English title researched specifically for the topic (e.g. `Why Does Chopping Onions Make Us Cry? 🧅😭 (It's NOT What You Think!)`).
+       - **Description:** 2–3 hook-driven lines in English explaining the mystery + proven topic hashtags (`#Shorts #Facts #Science #Curiosity`).
+       - **Tags:** Researched English tags and search queries targeting US/Global audiences.
      - **Hindi Videos (`output/Hindi/<slug>_metadata.txt`):**
-       - **Title:** Written in natural, curiosity-inducing **Hindi (Devanagari script)** with emojis (e.g. `प्याज काटते ही आँखों से आँसू क्यों बहने लगते हैं? 🧅😭`).
-       - **Description:** 2–3 engaging lines written in pure Hindi explaining the premise + relevant Hindi hashtags (`#Shorts #FactsInHindi #HindiFacts #DailyFunFacts`).
-       - **Tags:** A strategic dual mix of **Devanagari keywords + Hinglish search phrases** (e.g. `pyaj katne se aansu kyu aate hai`, `onion facts in hindi`, `science facts hindi`, `हिंदी फैक्ट्स`, `daily fun facts hindi`). This ensures the video ranks when Indian viewers search either in Hindi script or type phonetically in English letters. Never put English-only titles or descriptions in Hindi metadata files.
+       - **Title:** **Written in Hinglish (English letters with Hindi words)** — natural conversational phrasing that Indian viewers actually search and click on (e.g. `Pyaj Kaatne Par Aankhon Se Aansu Kyu Aate Hain? 🧅😭`).
+       - **Description:** **Written in Hinglish (English letters with Hindi words)** — 2–3 punchy sentences explaining the core curiosity in conversational Roman-script Hindi, followed by trending viral hashtags:
+         *(e.g. "Kya aapne kabhi socha hai, pyaj kaat te hi aankhon se aansu kyu nikalne lagte hain? Jaise hi knife chalta hai, pyaj ke chemical violent reaction se acid banate hain! Jaaniye iska real science... #Shorts #FactsInHindi #DailyFunFacts #HindiFacts #ScienceFacts")*.
+       - **Tags:** Researched **Hinglish search queries and keywords** that people type into YouTube search bars (e.g. `pyaj katne se aansu kyu aate hai`, `pyaj ka science facts`, `hindi facts shorts`, `daily fun facts hindi`, `why onion make us cry in hindi`). Never use pure Devanagari script for Hindi metadata when Hinglish is specified.
 
 7. **Approval-Gated Zero-Bloat Asset Purge**
    - Only after the rendered MP4 passes final verification (and user approves post-render if review is requested), run [`purge_story_assets.py`](./scripts/purge_story_assets.py):
