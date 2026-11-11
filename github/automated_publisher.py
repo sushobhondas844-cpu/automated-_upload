@@ -1,17 +1,22 @@
 """
-Automated Cloud Publishing Dispatcher
+Automated Cloud Publishing Dispatcher (Telegram Vault Edition)
 Designed to run on GitHub Actions or a scheduled cloud worker.
 
 Workflow:
-1. Connects to Google Drive and Google Sheets via GOOGLE_SERVICE_ACCOUNT_JSON.
+1. Connects to Google Sheets via GOOGLE_SERVICE_ACCOUNT_JSON.
 2. Reads the central workbook 'YouTube Content Pipeline & Dispatcher'.
-3. Checks 'Task_Queue' for tasks where Status is 'READY_FOR_UPLOAD' and Scheduled_Time is due.
-4. Reads the video folder in Drive (parses metadata.txt for Title, Topic, Description, Tags, Category, Privacy).
-5. Uploads to the appropriate YouTube channel (Hindi or English).
-6. Logs the video into the channel's archive tab with:
-   [Topic, Video_Title, Video_URL, Views, Likes, Comments, Video_ID]
-7. Updates the 'Trending Topics' count (via live formula or direct cell update).
+3. Checks 'Task_Queue' for tasks matching the scheduled channel (ENGLISH at Midnight IST, HINDI at 4:30 PM IST).
+4. Pulls video and metadata directly from the Telegram Cloud Vault (uncompressed doc file_id) via Telegram Bot API.
+5. If NO fresh video is ready in Task_Queue:
+   - Inspects the 'Backup_Pool' tab for the oldest available 'STANDBY' video.
+   - Downloads the backup video and metadata from Telegram.
+   - Uploads backup to YouTube.
+   - Marks backup as 'USED' and pings Telegram:
+     "⚠️ No fresh video today. Published backup: {title}. Remaining backups: {count}."
+6. Uploads video to YouTube (Hindi or English channel).
+7. Logs the video into the channel's archive tab.
 8. Automatically updates live View, Like, and Comment counters across all channel tabs.
+9. Cleans up temporary disk files (maintaining zero-bloat).
 """
 
 import os
@@ -19,15 +24,22 @@ import sys
 import json
 import base64
 import tempfile
+import urllib.request
 from datetime import datetime, timezone
+import pytz
+
 from google.oauth2.service_account import Credentials as ServiceAccountCredentials
 from google.oauth2.credentials import Credentials as UserCredentials
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
 MASTER_FOLDER_ID = "1b9MZR5idAK4EqLi2akxFX-FAMycA8rDe"
 DEFAULT_SHEET_NAME = "YouTube Content Pipeline & Dispatcher"
-SCOPES_YOUTUBE = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"]
+SCOPES_YOUTUBE = [
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube.readonly"
+]
+
 
 def get_google_clients():
     sa_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
@@ -37,7 +49,7 @@ def get_google_clients():
     if sa_json.strip().startswith("{"):
         creds_dict = json.loads(sa_json)
     else:
-        creds_dict = json.loads(base64.b64decode(sa_json).decode('utf-8'))
+        creds_dict = json.loads(base64.b64decode(sa_json).decode("utf-8"))
 
     if "client_email" in creds_dict and creds_dict.get("type") == "service_account":
         scopes = [
@@ -55,6 +67,7 @@ def get_google_clients():
     sheets_service = build("sheets", "v4", credentials=creds)
     return drive_service, sheets_service
 
+
 def get_youtube_client(channel_key):
     secret_key = "YOUTUBE_TOKEN_HINDI" if "HINDI" in channel_key.upper() else "YOUTUBE_TOKEN_ENGLISH"
     token_json = os.environ.get(secret_key)
@@ -64,10 +77,11 @@ def get_youtube_client(channel_key):
     if token_json.strip().startswith("{"):
         token_data = json.loads(token_json)
     else:
-        token_data = json.loads(base64.b64decode(token_json).decode('utf-8'))
+        token_data = json.loads(base64.b64decode(token_json).decode("utf-8"))
 
     creds = UserCredentials.from_authorized_user_info(token_data, scopes=SCOPES_YOUTUBE)
     return build("youtube", "v3", credentials=creds)
+
 
 def find_spreadsheet_id(drive_service, sheet_name):
     q = f"'{MASTER_FOLDER_ID}' in parents and name = '{sheet_name}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false"
@@ -82,17 +96,45 @@ def find_spreadsheet_id(drive_service, sheet_name):
         return files2[0]["id"]
     raise FileNotFoundError(f"Spreadsheet '{sheet_name}' not found.")
 
-def download_file_from_drive(drive_service, file_id, dest_path):
-    print(f"[*] Downloading file {file_id} from Drive...")
-    request = drive_service.files().get_media(fileId=file_id)
-    with open(dest_path, "wb") as f:
-        downloader = MediaIoBaseDownload(f, request)
-        done = False
-        while not done:
-            status, done = downloader.next_chunk()
-            if status:
-                print(f"    Download progress: {int(status.progress() * 100)}%")
-    print(f"[+] Download complete: {dest_path}")
+
+def send_telegram_alert(text: str):
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "").split("#")[0].strip()
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").split("#")[0].strip()
+    if not bot_token or not chat_id:
+        print("[-] Skipping Telegram alert: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set.")
+        return
+
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = json.dumps({"chat_id": chat_id, "text": text}).encode("utf-8")
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            print("[+] Telegram alert sent successfully.")
+    except Exception as e:
+        print(f"[!] Warning: Failed to send Telegram alert: {e}")
+
+
+def download_telegram_file(file_id: str, dest_path: str):
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "").split("#")[0].strip()
+    if not bot_token:
+        raise ValueError("Missing TELEGRAM_BOT_TOKEN.")
+
+    print(f"[*] Resolving Telegram file_id: {file_id}")
+    url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
+    req = urllib.request.Request(url)
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+
+    if not data.get("ok"):
+        raise RuntimeError(f"Telegram getFile failed: {data}")
+
+    file_path = data["result"]["file_path"]
+    download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+    print(f"[*] Downloading file from Telegram vault...")
+    urllib.request.urlretrieve(download_url, dest_path)
+    sz_mb = os.path.getsize(dest_path) / (1024 * 1024)
+    print(f"[+] Download complete: {dest_path} ({sz_mb:.2f} MB)")
+
 
 def parse_metadata_file(content_text):
     data = {
@@ -161,22 +203,23 @@ def parse_metadata_file(content_text):
 
     return data
 
+
 def upload_video_to_youtube(youtube_service, file_path, meta):
     print(f"[*] Uploading to YouTube: '{meta['title']}' [{meta['privacy']}]")
     body = {
-        'snippet': {
-            'title': meta['title'],
-            'description': meta['description'],
-            'tags': meta['tags'],
-            'categoryId': meta.get('category_id', '27')
+        "snippet": {
+            "title": meta["title"][:100],
+            "description": meta["description"],
+            "tags": meta["tags"],
+            "categoryId": meta.get("category_id", "27")
         },
-        'status': {
-            'privacyStatus': meta.get('privacy', 'public'),
-            'selfDeclaredMadeForKids': False
+        "status": {
+            "privacyStatus": meta.get("privacy", "public"),
+            "selfDeclaredMadeForKids": False
         }
     }
     media = MediaFileUpload(file_path, chunksize=1024*1024*5, resumable=True, mimetype="video/mp4")
-    request = youtube_service.videos().insert(part=','.join(body.keys()), body=body, media_body=media)
+    request = youtube_service.videos().insert(part=",".join(body.keys()), body=body, media_body=media)
 
     response = None
     while response is None:
@@ -189,8 +232,8 @@ def upload_video_to_youtube(youtube_service, file_path, meta):
     print(f"[+] Upload successful! Video URL: {watch_url}")
     return video_id, watch_url
 
+
 def update_view_counters(youtube_services, sheets_service, spreadsheet_id, channel_tabs):
-    """Updates live Views, Likes, and Comments for all recorded videos."""
     print("\n[*] Updating view counters & statistics for published videos...")
     for tab_name, channel_key in channel_tabs.items():
         yt = youtube_services.get(channel_key)
@@ -206,7 +249,6 @@ def update_view_counters(youtube_services, sheets_service, spreadsheet_id, chann
                 continue
 
             for row_idx, r in enumerate(rows[1:], start=2):
-                # Columns: Topic(0), Video_Title(1), Video_URL(2), Views(3), Likes(4), Comments(5), Video_ID(6)
                 if len(r) >= 7 and r[6]:
                     vid = r[6].strip()
                     if vid and len(vid) >= 10:
@@ -218,18 +260,17 @@ def update_view_counters(youtube_services, sheets_service, spreadsheet_id, chann
                                 views = stats.get("viewCount", "0")
                                 likes = stats.get("likeCount", "0")
                                 comments = stats.get("commentCount", "0")
-                                # Col D: Views, Col E: Likes, Col F: Comments
                                 sheets_service.spreadsheets().values().update(
                                     spreadsheetId=spreadsheet_id,
-                                    range=f"'{tab_name}'!D{row_idx}:F{row_idx}",
+                                    range=f"'{tab_name}'!C{row_idx}:E{row_idx}",
                                     valueInputOption="USER_ENTERED",
-                                    body={'values': [[views, likes, comments]]}
+                                    body={"values": [[views, likes, comments]]}
                                 ).execute()
-                                print(f"    [{tab_name}] Video '{vid}': {views} views, {likes} likes, {comments} comments")
                         except Exception as e:
                             print(f"    [!] Failed to update stats for {vid}: {e}")
         except Exception as e:
             print(f"[!] Warning reading tab '{tab_name}': {e}")
+
 
 def process_queue():
     sheet_name = os.environ.get("TRACKING_SHEET_NAME", DEFAULT_SHEET_NAME)
@@ -237,14 +278,11 @@ def process_queue():
     spreadsheet_id = find_spreadsheet_id(drive_service, sheet_name)
     print(f"[*] Connected to Spreadsheet: '{sheet_name}' (ID: {spreadsheet_id})")
 
-    # Read Task_Queue
-    queue_res = sheets_service.spreadsheets().values().get(
-        spreadsheetId=spreadsheet_id,
-        range="Task_Queue!A1:H100"
-    ).execute()
-    queue_rows = queue_res.get("values", [])
+    now_utc = datetime.now(timezone.utc)
+    ist_tz = pytz.timezone("Asia/Kolkata")
+    now_ist = datetime.now(ist_tz)
+    print(f"[*] Current IST Time: {now_ist.strftime('%Y-%m-%d %H:%M:%S %Z')}")
 
-    now = datetime.now(timezone.utc)
     channel_tabs = {
         "Daily Fun Facts (Hindi)": "HINDI",
         "How Did That Happen (English)": "ENGLISH"
@@ -254,26 +292,12 @@ def process_queue():
         "ENGLISH": get_youtube_client("ENGLISH")
     }
 
-    # Filter by time of day or manual override
-    # Local Time is Asia/Kolkata (IST = UTC+5:30)
-    # 12:00 AM IST (Midnight) -> ENGLISH uploads
-    # 04:30 PM IST (Evening)  -> HINDI uploads
     dispatch_channel = os.environ.get("DISPATCH_CHANNEL", "ALL").strip().upper()
-    
-    # Calculate current IST hour and minute
-    import pytz
-    ist_tz = pytz.timezone("Asia/Kolkata")
-    now_ist = datetime.now(ist_tz)
-    print(f"[*] Current IST Time: {now_ist.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-
     allowed_channel = None
     if dispatch_channel in ["ENGLISH", "HINDI"]:
         allowed_channel = dispatch_channel
-        print(f"[*] Manual dispatch override: processing only {allowed_channel} videos.")
+        print(f"[*] Manual dispatch override: processing strictly {allowed_channel} videos.")
     else:
-        # Determine based on IST time slot
-        # Midnight slot: around 00:00 IST (23:00 - 02:00 window)
-        # Evening slot: around 16:30 IST (15:30 - 18:00 window)
         if 22 <= now_ist.hour or now_ist.hour < 3:
             allowed_channel = "ENGLISH"
             print(f"[*] Time slot detected: Midnight window -> processing strictly ENGLISH videos.")
@@ -281,122 +305,222 @@ def process_queue():
             allowed_channel = "HINDI"
             print(f"[*] Time slot detected: Evening rush window (4:30 PM) -> processing strictly HINDI videos.")
         else:
-            print(f"[*] Time slot ({now_ist.strftime('%H:%M')} IST) is outside designated upload windows (12:00 AM English, 4:30 PM Hindi).")
-            # If not in window, exit cleanly without processing
+            print(f"[*] Outside designated upload windows ({now_ist.strftime('%H:%M')} IST). Updating counters only.")
             update_view_counters(youtube_services, sheets_service, spreadsheet_id, channel_tabs)
             return
+
+    # 1. READ TASK QUEUE
+    queue_res = sheets_service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range="Task_Queue!A1:J100"
+    ).execute()
+    queue_rows = queue_res.get("values", [])
+
+    task_found = False
 
     if queue_rows and len(queue_rows) > 1:
         headers = [h.strip() for h in queue_rows[0]]
         for row_idx, row in enumerate(queue_rows[1:], start=2):
             row_dict = {headers[i]: row[i] if i < len(row) else "" for i in range(len(headers))}
             status = row_dict.get("Status", "").strip().upper()
-            target_channel = row_dict.get("Target_Channel", "HINDI").strip()
-            folder_name = row_dict.get("Folder_Name", "").strip()
-            sched_time_str = row_dict.get("Scheduled_Time_UTC", "").strip()
+            target_channel = row_dict.get("Target_Channel", "HINDI").strip().upper()
+            channel_key = "HINDI" if "HINDI" in target_channel else "ENGLISH"
 
-            channel_key = "HINDI" if "HINDI" in target_channel.upper() else "ENGLISH"
-
-            # Strictly enforce channel match for this schedule run
-            if allowed_channel and channel_key != allowed_channel:
+            if channel_key != allowed_channel:
                 continue
 
             if status in ["READY_FOR_UPLOAD", "PENDING", "APPROVED"]:
-
+                sched_time_str = row_dict.get("Scheduled_Time_UTC", "").strip()
                 if sched_time_str:
                     try:
                         sched_dt = datetime.fromisoformat(sched_time_str.replace("Z", "+00:00"))
-                        if sched_dt > now:
+                        if sched_dt > now_utc:
                             print(f"[-] Task at row {row_idx} scheduled for {sched_time_str} is in the future. Skipping.")
                             continue
                     except Exception as e:
                         print(f"[!] Warning parsing time '{sched_time_str}': {e}")
 
-                print(f"\n[>>>] Processing Task at row {row_idx}: Folder '{folder_name}' for channel '{target_channel}'")
+                tg_file_id = row_dict.get("Telegram_File_ID", "").strip()
+                tg_meta_id = row_dict.get("Telegram_Meta_ID", "").strip()
 
-                folder_q = f"name = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
-                f_res = drive_service.files().list(q=folder_q, fields="files(id, name, parents)").execute()
-                f_items = f_res.get("files", [])
-
-                if not f_items:
-                    print(f"[-] Video folder '{folder_name}' not found in Drive. Skipping.")
+                if not tg_file_id:
+                    print(f"[-] Task at row {row_idx} missing Telegram_File_ID. Checking Drive fallback...")
                     continue
 
-                video_folder_id = f_items[0]["id"]
-                files_res = drive_service.files().list(
-                    q=f"'{video_folder_id}' in parents and trashed = false",
-                    fields="files(id, name, mimeType)"
-                ).execute().get("files", [])
-
-                mp4_file = None
-                meta_file = None
-                for item in files_res:
-                    if item["name"].lower().endswith(".mp4") or "video" in item["mimeType"]:
-                        mp4_file = item
-                    elif item["name"].lower() == "metadata.txt":
-                        meta_file = item
-
-                if not mp4_file:
-                    print(f"[-] No MP4 video file found inside folder '{folder_name}'. Skipping.")
-                    continue
-
-                meta = {
-                    "topic": row_dict.get("Topic") or folder_name.replace("_", " ").title(),
-                    "title": row_dict.get("Video_Title") or folder_name.replace("_", " ").title(),
-                    "description": "#Shorts #Facts #Curiosity",
-                    "tags": ["facts", "stickman", "shorts", "animation"],
-                    "category_id": "27",
-                    "privacy": "public"
-                }
+                print(f"\n[>>>] Processing Fresh Task at row {row_idx} for channel '{channel_key}'")
+                task_found = True
 
                 with tempfile.TemporaryDirectory() as tmp_dir:
-                    if meta_file:
+                    video_path = os.path.join(tmp_dir, "upload_video.mp4")
+                    download_telegram_file(tg_file_id, video_path)
+
+                    meta = {
+                        "topic": row_dict.get("Topic") or "Daily Explainer",
+                        "title": row_dict.get("Video_Title") or "Daily Short",
+                        "description": "#Shorts #Facts #Curiosity",
+                        "tags": ["facts", "stickman", "shorts", "animation"],
+                        "category_id": "27",
+                        "privacy": "public"
+                    }
+
+                    if tg_meta_id:
                         meta_path = os.path.join(tmp_dir, "metadata.txt")
-                        download_file_from_drive(drive_service, meta_file["id"], meta_path)
-                        with open(meta_path, "r", encoding="utf-8") as mf:
-                            parsed = parse_metadata_file(mf.read())
-                            meta.update(parsed)
+                        try:
+                            download_telegram_file(tg_meta_id, meta_path)
+                            with open(meta_path, "r", encoding="utf-8") as mf:
+                                parsed = parse_metadata_file(mf.read())
+                                meta.update(parsed)
+                        except Exception as e:
+                            print(f"[!] Warning reading metadata doc: {e}")
 
                     if row_dict.get("Video_Title"):
                         meta["title"] = row_dict["Video_Title"]
 
-                    video_path = os.path.join(tmp_dir, "upload_video.mp4")
-                    download_file_from_drive(drive_service, mp4_file["id"], video_path)
-
-                    channel_key = "HINDI" if "HINDI" in target_channel.upper() else "ENGLISH"
                     yt_service = youtube_services[channel_key]
                     vid_id, watch_url = upload_video_to_youtube(yt_service, video_path, meta)
 
                     # Mark Task_Queue as PUBLISHED
+                    status_col_idx = headers.index("Status") if "Status" in headers else 5
+                    col_letter = chr(ord('A') + status_col_idx)
                     sheets_service.spreadsheets().values().update(
                         spreadsheetId=spreadsheet_id,
-                        range=f"Task_Queue!F{row_idx}",
+                        range=f"Task_Queue!{col_letter}{row_idx}",
                         valueInputOption="USER_ENTERED",
-                        body={'values': [["PUBLISHED"]]}
+                        body={"values": [["PUBLISHED"]]}
                     ).execute()
 
-                    # Archive into the Channel Tab with Streamlined Columns:
-                    # [Topic, Video_Title, Video_URL, Views, Likes, Comments, Video_ID]
+                    # Archive into the Channel Tab: ['Video_Title', 'Video_URL', 'Views', 'Likes', 'Comments', 'Uploaded_Time', 'Video_ID']
                     dest_tab = "Daily Fun Facts (Hindi)" if channel_key == "HINDI" else "How Did That Happen (English)"
                     archive_row = [
-                        meta.get("topic", "General"),
                         meta["title"],
                         watch_url,
-                        "0",  # initial views
-                        "0",  # initial likes
-                        "0",  # initial comments
+                        "0", "0", "0",
+                        now_ist.strftime("%Y-%m-%d %H:%M IST"),
                         vid_id
                     ]
                     sheets_service.spreadsheets().values().append(
                         spreadsheetId=spreadsheet_id,
                         range=f"'{dest_tab}'!A1",
                         valueInputOption="USER_ENTERED",
-                        body={'values': [archive_row]}
+                        body={"values": [archive_row]}
                     ).execute()
-                    print(f"[+] Task successfully archived into '{dest_tab}' with Topic '{meta.get('topic')}'!")
 
-    # Live update statistics (views, likes, comments) for all channel videos
+                    send_telegram_alert(
+                        f"🎉 YouTube Upload Complete!\n\n"
+                        f"📌 Channel: {dest_tab}\n"
+                        f"🎬 Title: {meta['title']}\n"
+                        f"🔗 Link: {watch_url}\n"
+                        f"🕒 Uploaded: {now_ist.strftime('%Y-%m-%d %H:%M IST')}"
+                    )
+                break
+
+    # 2. FAILOVER TO BACKUP_POOL IF NO FRESH TASK WAS PROCESSED
+    if not task_found:
+        print(f"\n[!] No ready task found in Task_Queue for {allowed_channel}. Checking Backup_Pool...")
+        try:
+            pool_res = sheets_service.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range="Backup_Pool!A1:H50"
+            ).execute()
+            pool_rows = pool_res.get("values", [])
+
+            if pool_rows and len(pool_rows) > 1:
+                p_headers = [h.strip() for h in pool_rows[0]]
+                backup_row_to_use = None
+                backup_row_idx = None
+                remaining_backups = 0
+
+                for p_idx, p_row in enumerate(pool_rows[1:], start=2):
+                    p_dict = {p_headers[i]: p_row[i] if i < len(p_row) else "" for i in range(len(p_headers))}
+                    p_status = p_dict.get("Status", "").strip().upper()
+                    p_channel = p_dict.get("Channel", "").strip().upper()
+
+                    if p_status == "STANDBY" and (allowed_channel in p_channel or p_channel in allowed_channel):
+                        if backup_row_to_use is None:
+                            backup_row_to_use = p_dict
+                            backup_row_idx = p_idx
+                        else:
+                            remaining_backups += 1
+
+                if backup_row_to_use:
+                    print(f"[+] Deploying backup video: '{backup_row_to_use.get('Title')}' (Remaining: {remaining_backups})")
+                    tg_file_id = backup_row_to_use.get("Telegram_File_ID", "").strip()
+                    tg_meta_id = backup_row_to_use.get("Telegram_Meta_ID", "").strip()
+
+                    with tempfile.TemporaryDirectory() as tmp_dir:
+                        video_path = os.path.join(tmp_dir, "backup_video.mp4")
+                        download_telegram_file(tg_file_id, video_path)
+
+                        meta = {
+                            "topic": backup_row_to_use.get("Topic") or "Evergreen Explainer",
+                            "title": backup_row_to_use.get("Title") or "Evergreen Short",
+                            "description": "#Shorts #Facts #Curiosity",
+                            "tags": ["facts", "stickman", "shorts", "animation"],
+                            "category_id": "27",
+                            "privacy": "public"
+                        }
+                        if tg_meta_id:
+                            meta_path = os.path.join(tmp_dir, "metadata.txt")
+                            try:
+                                download_telegram_file(tg_meta_id, meta_path)
+                                with open(meta_path, "r", encoding="utf-8") as mf:
+                                    parsed = parse_metadata_file(mf.read())
+                                    meta.update(parsed)
+                            except Exception as e:
+                                print(f"[!] Warning reading backup metadata: {e}")
+
+                        yt_service = youtube_services[allowed_channel]
+                        vid_id, watch_url = upload_video_to_youtube(yt_service, video_path, meta)
+
+                        # Mark as USED in Backup_Pool
+                        p_status_idx = p_headers.index("Status") if "Status" in p_headers else 5
+                        p_col_letter = chr(ord('A') + p_status_idx)
+                        sheets_service.spreadsheets().values().update(
+                            spreadsheetId=spreadsheet_id,
+                            range=f"Backup_Pool!{p_col_letter}{backup_row_idx}",
+                            valueInputOption="USER_ENTERED",
+                            body={"values": [["USED"]]}
+                        ).execute()
+
+                        dest_tab = "Daily Fun Facts (Hindi)" if allowed_channel == "HINDI" else "How Did That Happen (English)"
+                        archive_row = [
+                            meta["title"],
+                            watch_url,
+                            "0", "0", "0",
+                            now_ist.strftime("%Y-%m-%d %H:%M IST"),
+                            vid_id
+                        ]
+                        sheets_service.spreadsheets().values().append(
+                            spreadsheetId=spreadsheet_id,
+                            range=f"'{dest_tab}'!A1",
+                            valueInputOption="USER_ENTERED",
+                            body={"values": [archive_row]}
+                        ).execute()
+
+                        # Send Telegram Emergency Notification
+                        alert_msg = (
+                            f"⚠️ AUTOMATION NOTICE: NO NEW VIDEO FOUND TODAY\n"
+                            f"-----------------------------------------------\n"
+                            f"📌 Channel: {dest_tab}\n"
+                            f"🎬 Title: {meta['title']}\n"
+                            f"🔗 Link: {watch_url}\n"
+                            f"🕒 Uploaded: {now_ist.strftime('%Y-%m-%d %H:%M IST')}\n\n"
+                            f"🚨 Backlog Status: Only {remaining_backups} standby backup(s) remaining in pool!\n"
+                            f"Please render new videos to refill the safety buffer."
+                        )
+                        send_telegram_alert(alert_msg)
+                else:
+                    print(f"[-] No STANDBY videos found in Backup_Pool for channel {allowed_channel}.")
+                    send_telegram_alert(
+                        f"🚨 CRITICAL WARNING: No fresh video scheduled AND Backup_Pool is EMPTY for {allowed_channel}!\n"
+                        f"No video could be published today. Please generate new content immediately."
+                    )
+        except Exception as e:
+            print(f"[!] Warning querying Backup_Pool: {e}")
+
+    # 3. Live update statistics for all channel videos
     update_view_counters(youtube_services, sheets_service, spreadsheet_id, channel_tabs)
+
 
 if __name__ == "__main__":
     process_queue()

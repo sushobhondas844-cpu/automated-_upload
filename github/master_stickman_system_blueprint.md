@@ -36,12 +36,14 @@ flowchart TD
 
 ### Pillar 1: Scripting & Chapter Cards
 - **Voice Pacing:** 2.5 to 3.5 words per second (150–170 wpm).
+- **Cut Frequency (The 2-Second Rule):** New scene cut every **1.8 to 2.8 seconds** (11–14 scenes per 30s Short, 16–20 per 45s, 22–26 per 60s). Linger time must never exceed 3.0 seconds to prevent audience swipe-away.
 - **No Top Loading Bar:** Clean UI; avoids distracting top progress bars.
 - **Top Chapter Card:** Two high-contrast lines (`28px` bold category tag + `46px` primary title in rounded container).
-- **Sound Effects:** Layered into three tiers:
-  1. *Pacing SFX:* Subtle whooshes and pop sounds on panel cuts.
-  2. *Diegetic Object SFX:* Animal bleats/snorts, tractor engine chugs, water splashes, tool clinks.
-  3. *Audio Ducking:* Background music compressed by -12dB under speech.
+- **Sound Effects (Smart Context-Aware Layering):**
+  1. *Diegetic Object SFX:* Water splashes/trickles on liquid scenes, animal calls on animal scenes, metal strikes and hammer clangs on construction scenes.
+  2. *Pacing & Beat Shifts:* Fast whooshes and pop sounds on panel cuts, eureka dings on idea reveals.
+  3. *Physical Vibration Engine:* Impacts, hammering, earthquakes, or crashes trigger `impactShake` motion mode with damped high-frequency sinusoidal translation (`translate(X, Y)`).
+  4. *Audio Ducking:* Ambience and background tracks ducked under speech.
 
 ### Pillar 2: Single-Call Gemini TTS Script
 Located at `scripts/generate_gemini_story_tts.py`:
