@@ -36,8 +36,8 @@ jobs:
           YOUTUBE_TOKEN_ENGLISH: ${{ secrets.YOUTUBE_TOKEN_ENGLISH }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
-          CHAT_ID: ${{ secrets.CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || secrets.CHAT_ID || secrets.MY_TELEGRAM_CHAT_ID || '5267470220' }}
+          CHAT_ID: ${{ secrets.CHAT_ID || secrets.TELEGRAM_CHAT_ID || secrets.MY_TELEGRAM_CHAT_ID || '5267470220' }}
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID || '30360141' }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH || 'ecb0dc6dbe73524409a14f7dfff7b6e2' }}
         run: |
@@ -50,8 +50,8 @@ jobs:
           YOUTUBE_TOKEN_ENGLISH: ${{ secrets.YOUTUBE_TOKEN_ENGLISH }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
-          CHAT_ID: ${{ secrets.CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || secrets.CHAT_ID || secrets.MY_TELEGRAM_CHAT_ID || '5267470220' }}
+          CHAT_ID: ${{ secrets.CHAT_ID || secrets.TELEGRAM_CHAT_ID || secrets.MY_TELEGRAM_CHAT_ID || '5267470220' }}
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID || '30360141' }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH || 'ecb0dc6dbe73524409a14f7dfff7b6e2' }}
           TRACKING_SHEET_NAME: "YouTube Content Pipeline & Dispatcher"
