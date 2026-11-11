@@ -70,29 +70,37 @@ def check_all():
         print(f"  [FAIL] Telegram MTProto authorization failed: {e}")
         all_ok = False
 
-    # 3. Google Service Account (Sheets)
-    print("\n[3] Auditing Google Service Account (Google Sheets access)...")
+    # 3. Google Service Account / OAuth User Token (Sheets)
+    print("\n[3] Auditing Google Credentials (Google Sheets access)...")
     sa_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
     if not sa_json:
         print("  [FAIL] GOOGLE_SERVICE_ACCOUNT_JSON secret is empty!")
         all_ok = False
     else:
         try:
-            sa_info = json.loads(sa_json)
-            scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive.readonly"]
-            creds = SACredentials.from_service_account_info(sa_info, scopes=scopes)
-            drive = build("drive", "v3", credentials=creds)
-            res = drive.files().list(
-                q="name = 'YouTube Content Pipeline & Dispatcher' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false",
-                fields="files(id, name)"
-            ).execute()
-            files = res.get("files", [])
-            if files:
-                print(f"  [OK] Google Service Account verified! Master Sheet found: {files[0]['id']}")
+            import base64
+            if sa_json.startswith("{"):
+                creds_dict = json.loads(sa_json)
             else:
-                print("  [WARN] Service account valid, but master sheet not found by name. Checking ID fallback...")
+                creds_dict = json.loads(base64.b64decode(sa_json).decode("utf-8"))
+
+            if "client_email" in creds_dict and creds_dict.get("type") == "service_account":
+                scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+                creds = SACredentials.from_service_account_info(creds_dict, scopes=scopes)
+                cred_type = "Service Account"
+            elif "token" in creds_dict or "refresh_token" in creds_dict:
+                token_scopes = creds_dict.get("scopes")
+                creds = UserCredentials.from_authorized_user_info(creds_dict, scopes=token_scopes)
+                cred_type = "OAuth User Token"
+            else:
+                raise ValueError("Unrecognized Google credentials JSON format.")
+
+            sheets = build("sheets", "v4", credentials=creds)
+            res = sheets.spreadsheets().get(spreadsheetId="1xXpZpx_xencUSD7QzoZMt7ZuKtrf-SfTDurx2h-C5V4").execute()
+            sheet_title = res.get("properties", {}).get("title", "YouTube Content Pipeline & Dispatcher")
+            print(f"  [OK] Google Credentials verified ({cred_type})! Master Sheet connected: '{sheet_title}'")
         except Exception as e:
-            print(f"  [FAIL] Google Service Account error: {e}")
+            print(f"  [FAIL] Google Credentials error: {e}")
             all_ok = False
 
     # 4. YouTube English Token
