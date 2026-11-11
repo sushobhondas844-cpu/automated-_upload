@@ -50,7 +50,74 @@ def get_services():
     sheets_service = build("sheets", "v4", credentials=creds)
     return drive_service, sheets_service
 
-def upload_video_package(video_path, metadata_path=None, channel_key="HINDI", folder_name=None, schedule_time=None):
+def parse_metadata_file(content_text):
+    data = {
+        "topic": "General Curiosity",
+        "title": "Daily Explainer Video",
+        "description": "",
+        "tags": ["facts", "shorts", "stickman", "animation"],
+        "category_id": "27",
+        "privacy": "public"
+    }
+    lines = content_text.splitlines()
+    current_section = None
+    desc_lines = []
+
+    for line in lines:
+        stripped = line.strip()
+        upper = stripped.upper()
+        if upper in ["TITLE:", "TITLE"]:
+            current_section = "title"
+            continue
+        elif upper in ["DESCRIPTION:", "DESCRIPTION"]:
+            current_section = "description"
+            continue
+        elif upper in ["HASHTAGS:", "TAGS:", "HASHTAGS", "TAGS"]:
+            current_section = "tags"
+            continue
+        elif upper in ["TOPIC:", "TOPIC"]:
+            current_section = "topic"
+            continue
+
+        if ":" in line and current_section is None:
+            k, v = line.split(":", 1)
+            kl = k.strip().lower()
+            vl = v.strip()
+            if kl == "title":
+                data["title"] = vl
+            elif kl == "topic":
+                data["topic"] = vl
+            elif kl in ["tags", "hashtags"]:
+                data["tags"] = [t.strip().replace("#", "") for t in vl.split(",") if t.strip()]
+            elif kl == "description":
+                data["description"] = vl
+            elif kl == "privacy":
+                data["privacy"] = vl
+            continue
+
+        if current_section == "title" and stripped:
+            data["title"] = stripped
+            data["topic"] = stripped.split("(")[0].replace("?", "").strip()
+            current_section = None
+        elif current_section == "topic" and stripped:
+            data["topic"] = stripped
+            current_section = None
+        elif current_section == "description":
+            desc_lines.append(line)
+        elif current_section == "tags" and stripped:
+            if "#" in stripped:
+                raw_tags = [t.strip("#").strip() for t in stripped.split() if t.strip()]
+                data["tags"].extend(raw_tags)
+            else:
+                raw_tags = [t.strip() for t in stripped.split(",") if t.strip()]
+                data["tags"].extend(raw_tags)
+
+    if desc_lines:
+        data["description"] = "\n".join(desc_lines).strip()
+
+    return data
+
+def upload_video_package(video_path, metadata_path=None, channel_key="ENGLISH", folder_name=None, schedule_time=None):
     channel_key = channel_key.upper()
     if channel_key not in CHANNELS:
         raise ValueError(f"Unknown channel: {channel_key}. Valid options: HINDI, ENGLISH")
@@ -64,52 +131,67 @@ def upload_video_package(video_path, metadata_path=None, channel_key="HINDI", fo
 
     drive_service, sheets_service = get_services()
 
-    print(f"\n[*] Preparing upload for: '{video_filename}'")
-    print(f"[*] Target Channel : {ch_info['name']}")
-    print(f"[*] Drive Folder   : {folder_name}")
-
-    # 1. Create subfolder inside Channel Drive folder
-    folder_meta = {
-        'name': folder_name,
-        'mimeType': 'application/vnd.google-apps.folder',
-        'parents': [parent_folder_id]
+    # Parse metadata if file provided
+    parsed_meta = {
+        "title": base_name.replace("_", " ").title(),
+        "topic": base_name.replace("_", " ").title(),
+        "description": f"Explaining {base_name}! #Shorts #Facts",
+        "tags": ["facts", "stickman", "animation", "curiosity"],
+        "category_id": "27",
+        "privacy": "public"
     }
-    drive_folder = drive_service.files().create(body=folder_meta, fields='id').execute()
-    folder_id = drive_folder.get('id')
-    print(f"[+] Created Drive folder: '{folder_name}' (ID: {folder_id})")
+    raw_meta_text = ""
 
-    # 2. Upload video file
-    print(f"[*] Uploading video file ({round(os.path.getsize(video_path) / (1024*1024), 2)} MB)...")
+    if metadata_path and os.path.exists(metadata_path):
+        with open(metadata_path, "r", encoding="utf-8") as mf:
+            raw_meta_text = mf.read()
+            parsed_meta = parse_metadata_file(raw_meta_text)
+
+    print(f"\n============================================================")
+    print(f"[*] Target Channel : {ch_info['name']}")
+    print(f"[*] Video File     : {video_filename} ({round(os.path.getsize(video_path) / (1024*1024), 2)} MB)")
+    print(f"[*] Title          : {parsed_meta['title']}")
+    print(f"[*] Topic          : {parsed_meta['topic']}")
+    print(f"[*] Folder Name    : {folder_name}")
+    print(f"============================================================")
+
+    # 1. Check if folder already exists in parent folder, or create new
+    q_existing = f"'{parent_folder_id}' in parents and name = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+    res_f = drive_service.files().list(q=q_existing, fields="files(id, name)").execute().get("files", [])
+    if res_f:
+        folder_id = res_f[0]["id"]
+        print(f"[+] Found existing Drive folder '{folder_name}' (ID: {folder_id})")
+    else:
+        folder_meta = {
+            'name': folder_name,
+            'mimeType': 'application/vnd.google-apps.folder',
+            'parents': [parent_folder_id]
+        }
+        drive_folder = drive_service.files().create(body=folder_meta, fields='id').execute()
+        folder_id = drive_folder.get('id')
+        print(f"[+] Created Drive folder: '{folder_name}' (ID: {folder_id})")
+
+    # 2. Upload video file to the folder
+    print(f"[*] Uploading video to Drive...")
     media_video = MediaFileUpload(video_path, chunksize=1024*1024*5, resumable=True, mimetype="video/mp4")
     video_drive_file = drive_service.files().create(
         body={'name': 'video.mp4', 'parents': [folder_id]},
         media_body=media_video,
         fields='id, name'
     ).execute()
-    print(f"[+] Video uploaded successfully (ID: {video_drive_file.get('id')})")
+    print(f"[+] Video uploaded: ID={video_drive_file.get('id')}")
 
-    # 3. Handle & Upload metadata.txt
-    title = base_name.replace("_", " ").title()
-    desc = f"Explaining {title}! #Shorts #Facts #Curiosity"
-    tags = "facts, stickman, animation, curiosity, educational, viral"
-
-    if metadata_path and os.path.exists(metadata_path):
-        with open(metadata_path, "r", encoding="utf-8") as mf:
-            meta_content = mf.read()
-            for line in meta_content.splitlines():
-                if line.lower().startswith("title:"):
-                    title = line.split(":", 1)[1].strip()
-    else:
-        # Generate default metadata content
-        meta_content = (
-            f"Title: {title}\n"
-            f"Description: {desc}\n"
-            f"Tags: {tags}\n"
+    # 3. Upload metadata.txt
+    if not raw_meta_text:
+        raw_meta_text = (
+            f"Title: {parsed_meta['title']}\n"
+            f"Topic: {parsed_meta['topic']}\n"
+            f"Description: {parsed_meta['description']}\n"
+            f"Tags: {', '.join(parsed_meta['tags'])}\n"
             f"Category: 27\n"
             f"Privacy: public\n"
         )
-
-    media_meta = MediaInMemoryUpload(meta_content.encode('utf-8'), mimetype='text/plain')
+    media_meta = MediaInMemoryUpload(raw_meta_text.encode('utf-8'), mimetype='text/plain')
     drive_service.files().create(
         body={'name': 'metadata.txt', 'parents': [folder_id]},
         media_body=media_meta,
@@ -125,11 +207,11 @@ def upload_video_package(video_path, metadata_path=None, channel_key="HINDI", fo
         task_id,
         ch_info["name"],
         folder_name,
-        title,
+        parsed_meta["title"],
         sched_utc,
         "READY_FOR_UPLOAD",
         "HIGH",
-        f"Uploaded from local workspace on {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
+        f"Uploaded from workspace on {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
     ]
 
     sheets_service.spreadsheets().values().append(
@@ -139,54 +221,41 @@ def upload_video_package(video_path, metadata_path=None, channel_key="HINDI", fo
         body={'values': [new_task_row]}
     ).execute()
 
-    print(f"[+] Task successfully registered in Task_Queue: {task_id}")
-    print(f"[+] Status: READY_FOR_UPLOAD")
+    print(f"[+] Successfully queued in Task_Queue: {task_id}")
+    print(f"[+] Status: READY_FOR_UPLOAD (Ready for GitHub Actions!)")
     print(f"============================================================")
-    print(f"Spreadsheet Tracker: https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}")
+    print(f"Drive Folder : https://drive.google.com/drive/folders/{folder_id}")
+    print(f"Spreadsheet  : https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}")
+    print(f"============================================================\n")
     return task_id
-
-def scan_and_upload():
-    if not os.path.exists(OUTPUT_DIR):
-        print(f"[!] Output directory not found: {OUTPUT_DIR}")
-        return
-
-    mp4_files = [f for f in os.listdir(OUTPUT_DIR) if f.lower().endswith(".mp4")]
-    if not mp4_files:
-        print(f"[*] No MP4 files currently in {OUTPUT_DIR}")
-        return
-
-    print(f"[*] Available MP4 files in output folder:")
-    for idx, f in enumerate(mp4_files, start=1):
-        full_p = os.path.join(OUTPUT_DIR, f)
-        size_mb = round(os.path.getsize(full_p) / (1024*1024), 2)
-        print(f"  [{idx}] {f} ({size_mb} MB)")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Upload video package to Drive & Queue in Sheets")
-    parser.add_argument("--video", help="Path to video file (or filename in output/)")
-    parser.add_argument("--metadata", help="Path to metadata.txt file (optional)")
-    parser.add_argument("--channel", default="HINDI", choices=["HINDI", "ENGLISH", "hindi", "english"], help="Target Channel (HINDI or ENGLISH)")
+    parser.add_argument("--video", help="Path to video file")
+    parser.add_argument("--metadata", help="Path to metadata.txt file")
+    parser.add_argument("--channel", default="ENGLISH", choices=["HINDI", "ENGLISH", "hindi", "english"], help="Target Channel")
     parser.add_argument("--folder", help="Custom folder name on Drive")
-    parser.add_argument("--schedule", help="Scheduled time in ISO format (e.g. 2026-11-12T14:00:00Z)")
-    parser.add_argument("--scan", action="store_true", help="List files in output directory")
+    parser.add_argument("--schedule", help="Scheduled time in ISO format")
 
     args = parser.parse_args()
 
-    if args.scan or not args.video:
-        scan_and_upload()
-    else:
-        v_path = args.video
-        if not os.path.isabs(v_path) and not os.path.exists(v_path):
-            v_path = os.path.join(OUTPUT_DIR, v_path)
+    v_path = args.video
+    if not v_path:
+        # Default to the english prune video if present
+        candidate = os.path.join(OUTPUT_DIR, "English", "fingers_prune_explainer.mp4")
+        if os.path.exists(candidate):
+            v_path = candidate
+            args.metadata = os.path.join(OUTPUT_DIR, "English", "fingers_prune_metadata.txt")
+            args.channel = "ENGLISH"
+            args.folder = "Fingers_Prune_Explainer"
 
-        if not os.path.exists(v_path):
-            print(f"[!] File not found: {v_path}")
-            sys.exit(1)
-
+    if v_path and os.path.exists(v_path):
         upload_video_package(
             video_path=v_path,
             metadata_path=args.metadata,
-            channel_key=args.channel.upper(),
+            channel_key=args.channel,
             folder_name=args.folder,
             schedule_time=args.schedule
         )
+    else:
+        print(f"[!] Please provide --video path.")

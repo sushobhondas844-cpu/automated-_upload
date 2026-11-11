@@ -98,28 +98,67 @@ def parse_metadata_file(content_text):
     data = {
         "topic": "General Curiosity",
         "title": "Daily Explainer Video",
-        "description": "#Shorts #Facts #Explainer",
+        "description": "",
         "tags": ["facts", "shorts", "stickman", "animation"],
         "category_id": "27",
         "privacy": "public"
     }
-    for line in content_text.splitlines():
-        if ":" in line:
-            key, val = line.split(":", 1)
-            k = key.strip().lower()
-            v = val.strip()
-            if k == "topic":
-                data["topic"] = v
-            elif k == "title":
-                data["title"] = v
-            elif k == "description":
-                data["description"] = v
-            elif k == "tags":
-                data["tags"] = [t.strip() for t in v.split(",") if t.strip()]
-            elif k == "category":
-                data["category_id"] = v
-            elif k in ["privacy", "status"]:
-                data["privacy"] = v.lower()
+    lines = content_text.splitlines()
+    current_section = None
+    desc_lines = []
+
+    for line in lines:
+        stripped = line.strip()
+        upper = stripped.upper()
+        if upper in ["TITLE:", "TITLE"]:
+            current_section = "title"
+            continue
+        elif upper in ["DESCRIPTION:", "DESCRIPTION"]:
+            current_section = "description"
+            continue
+        elif upper in ["HASHTAGS:", "TAGS:", "HASHTAGS", "TAGS"]:
+            current_section = "tags"
+            continue
+        elif upper in ["TOPIC:", "TOPIC"]:
+            current_section = "topic"
+            continue
+
+        if ":" in line and current_section is None:
+            k, v = line.split(":", 1)
+            kl = k.strip().lower()
+            vl = v.strip()
+            if kl == "title":
+                data["title"] = vl
+            elif kl == "topic":
+                data["topic"] = vl
+            elif kl in ["tags", "hashtags"]:
+                data["tags"] = [t.strip().replace("#", "") for t in vl.split(",") if t.strip()]
+            elif kl == "description":
+                data["description"] = vl
+            elif kl == "privacy":
+                data["privacy"] = vl
+            continue
+
+        if current_section == "title" and stripped:
+            data["title"] = stripped
+            data["topic"] = stripped.split("(")[0].replace("?", "").strip()
+            current_section = None
+        elif current_section == "topic" and stripped:
+            data["topic"] = stripped
+            current_section = None
+        elif current_section == "description":
+            desc_lines.append(line)
+        elif current_section == "tags" and stripped:
+            if "#" in stripped:
+                raw_tags = [t.strip("#").strip() for t in stripped.split() if t.strip()]
+                data["tags"].extend(raw_tags)
+            else:
+                raw_tags = [t.strip() for t in stripped.split(",") if t.strip()]
+                data["tags"].extend(raw_tags)
+
+    if desc_lines:
+        data["description"] = "\n".join(desc_lines).strip()
+
     return data
 
 def upload_video_to_youtube(youtube_service, file_path, meta):
