@@ -25,8 +25,8 @@ OUTPUT_DIR = os.path.join(WORKSPACE_DIR, "output")
 ENV_PATH = os.path.join(WORKSPACE_DIR, ".env")
 load_dotenv(ENV_PATH)
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+TELEGRAM_BOT_TOKEN = (os.getenv("BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
+TELEGRAM_CHAT_ID = (os.getenv("CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID") or "").strip()
 SPREADSHEET_ID = "1xXpZpx_xencUSD7QzoZMt7ZuKtrf-SfTDurx2h-C5V4"
 TOKEN_PATH = r"C:\Users\susho\Desktop\keygen\drive_token.json"
 

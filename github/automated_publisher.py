@@ -98,10 +98,10 @@ def find_spreadsheet_id(drive_service, sheet_name):
 
 
 def send_telegram_alert(text: str):
-    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "").split("#")[0].strip()
-    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").split("#")[0].strip()
+    bot_token = (os.environ.get("BOT_TOKEN") or os.environ.get("TELEGRAM_BOT_TOKEN") or "").split("#")[0].strip()
+    chat_id = (os.environ.get("CHAT_ID") or os.environ.get("TELEGRAM_CHAT_ID") or "").split("#")[0].strip()
     if not bot_token or not chat_id:
-        print("[-] Skipping Telegram alert: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set.")
+        print("[-] Skipping Telegram alert: BOT_TOKEN / TELEGRAM_BOT_TOKEN or CHAT_ID not set.")
         return
 
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
@@ -115,9 +115,9 @@ def send_telegram_alert(text: str):
 
 
 def download_telegram_file(file_id: str, dest_path: str):
-    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "").split("#")[0].strip()
+    bot_token = (os.environ.get("BOT_TOKEN") or os.environ.get("TELEGRAM_BOT_TOKEN") or "").split("#")[0].strip()
     if not bot_token:
-        raise ValueError("Missing TELEGRAM_BOT_TOKEN.")
+        raise ValueError("Missing BOT_TOKEN or TELEGRAM_BOT_TOKEN.")
 
     print(f"[*] Resolving Telegram file_id: {file_id}")
     url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"

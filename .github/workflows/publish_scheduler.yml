@@ -34,8 +34,10 @@ jobs:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           YOUTUBE_TOKEN_HINDI: ${{ secrets.YOUTUBE_TOKEN_HINDI }}
           YOUTUBE_TOKEN_ENGLISH: ${{ secrets.YOUTUBE_TOKEN_ENGLISH }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
+          CHAT_ID: ${{ secrets.CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
           TRACKING_SHEET_NAME: "YouTube Content Pipeline & Dispatcher"
           DISPATCH_CHANNEL: ${{ github.event.inputs.target_channel }}
         run: |
