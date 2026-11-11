@@ -119,8 +119,9 @@ def download_telegram_file(file_id: str, dest_path: str):
     if not bot_token:
         raise ValueError("Missing BOT_TOKEN or TELEGRAM_BOT_TOKEN.")
 
-    api_id = int(os.environ.get("TELEGRAM_API_ID", "30360141"))
-    api_hash = os.environ.get("TELEGRAM_API_HASH", "ecb0dca3f248e3a245f7823e59ea2738")
+    api_id_raw = (os.environ.get("TELEGRAM_API_ID") or "30360141").split("#")[0].strip()
+    api_id = int(api_id_raw)
+    api_hash = (os.environ.get("TELEGRAM_API_HASH") or "ecb0dc6dbe73524409a14f7dfff7b6e2").split("#")[0].strip()
 
     # 1. Try standard getFile first (instant for metadata and files <= 20MB)
     try:
