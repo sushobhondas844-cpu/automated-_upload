@@ -119,21 +119,47 @@ def download_telegram_file(file_id: str, dest_path: str):
     if not bot_token:
         raise ValueError("Missing BOT_TOKEN or TELEGRAM_BOT_TOKEN.")
 
-    print(f"[*] Resolving Telegram file_id: {file_id}")
-    url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
-    req = urllib.request.Request(url)
-    with urllib.request.urlopen(req, timeout=20) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
+    api_id = int(os.environ.get("TELEGRAM_API_ID", "30360141"))
+    api_hash = os.environ.get("TELEGRAM_API_HASH", "ecb0dca3f248e3a245f7823e59ea2738")
 
-    if not data.get("ok"):
-        raise RuntimeError(f"Telegram getFile failed: {data}")
+    # 1. Try standard getFile first (instant for metadata and files <= 20MB)
+    try:
+        print(f"[*] Resolving Telegram file_id: {file_id}")
+        url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
 
-    file_path = data["result"]["file_path"]
-    download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
-    print(f"[*] Downloading file from Telegram vault...")
-    urllib.request.urlretrieve(download_url, dest_path)
+        if data.get("ok"):
+            file_path = data["result"]["file_path"]
+            download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+            print(f"[*] Downloading file via Telegram Bot API...")
+            urllib.request.urlretrieve(download_url, dest_path)
+            sz_mb = os.path.getsize(dest_path) / (1024 * 1024)
+            print(f"[+] Download complete: {dest_path} ({sz_mb:.2f} MB)")
+            return
+    except urllib.error.HTTPError as e:
+        print(f"[*] Standard Bot API download returned {e.code} (File > 20MB). Switching to MTProto client...")
+    except Exception as e:
+        print(f"[*] Bot API download error: {e}. Switching to MTProto client...")
+
+    # 2. MTProto download via Pyrogram for video files > 20MB
+    print(f"[*] Downloading large media file via Telegram MTProto client...")
+    import asyncio
+    from pyrogram import Client
+
+    async def _mtproto_download():
+        async with Client("gh_bot_session", api_id=api_id, api_hash=api_hash, bot_token=bot_token, in_memory=True) as app:
+            dl_path = await app.download_media(file_id, file_name=dest_path)
+            if dl_path != dest_path and os.path.exists(dl_path):
+                import shutil
+                shutil.move(dl_path, dest_path)
+
+    asyncio.run(_mtproto_download())
+    if not os.path.exists(dest_path):
+        raise FileNotFoundError(f"Failed to download Telegram file to {dest_path}")
     sz_mb = os.path.getsize(dest_path) / (1024 * 1024)
-    print(f"[+] Download complete: {dest_path} ({sz_mb:.2f} MB)")
+    print(f"[+] MTProto Download complete: {dest_path} ({sz_mb:.2f} MB)")
 
 
 def parse_metadata_file(content_text):
