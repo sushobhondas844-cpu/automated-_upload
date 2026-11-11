@@ -2,9 +2,16 @@ name: Scheduled YouTube Publisher
 
 on:
   schedule:
-    # Runs automatically every 30 minutes to check if any video is due
-    - cron: '*/30 * * * *'
-  workflow_dispatch: # Allows manual trigger button in GitHub UI
+    # 12:00 AM IST (Midnight) = 18:30 UTC previous day -> Publishes English videos
+    - cron: '30 18 * * *'
+    # 04:30 PM IST (Evening rush) = 11:00 UTC -> Publishes Hindi videos
+    - cron: '0 11 * * *'
+  workflow_dispatch:
+    inputs:
+      target_channel:
+        description: 'Target Channel to Publish (ENGLISH, HINDI, or ALL)'
+        required: false
+        default: 'ALL'
 
 jobs:
   publish:
@@ -20,7 +27,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install gspread google-api-python-client google-auth-oauthlib google-auth-httplib2
+          pip install gspread google-api-python-client google-auth-oauthlib google-auth-httplib2 pytz
 
       - name: Run Automated Publisher
         env:
@@ -28,5 +35,7 @@ jobs:
           YOUTUBE_TOKEN_HINDI: ${{ secrets.YOUTUBE_TOKEN_HINDI }}
           YOUTUBE_TOKEN_ENGLISH: ${{ secrets.YOUTUBE_TOKEN_ENGLISH }}
           TRACKING_SHEET_NAME: "YouTube Content Pipeline & Dispatcher"
+          DISPATCH_CHANNEL: ${{ github.event.inputs.target_channel }}
         run: |
           python github/automated_publisher.py
+

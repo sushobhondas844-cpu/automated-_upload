@@ -254,6 +254,38 @@ def process_queue():
         "ENGLISH": get_youtube_client("ENGLISH")
     }
 
+    # Filter by time of day or manual override
+    # Local Time is Asia/Kolkata (IST = UTC+5:30)
+    # 12:00 AM IST (Midnight) -> ENGLISH uploads
+    # 04:30 PM IST (Evening)  -> HINDI uploads
+    dispatch_channel = os.environ.get("DISPATCH_CHANNEL", "ALL").strip().upper()
+    
+    # Calculate current IST hour and minute
+    import pytz
+    ist_tz = pytz.timezone("Asia/Kolkata")
+    now_ist = datetime.now(ist_tz)
+    print(f"[*] Current IST Time: {now_ist.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+
+    allowed_channel = None
+    if dispatch_channel in ["ENGLISH", "HINDI"]:
+        allowed_channel = dispatch_channel
+        print(f"[*] Manual dispatch override: processing only {allowed_channel} videos.")
+    else:
+        # Determine based on IST time slot
+        # Midnight slot: around 00:00 IST (23:00 - 02:00 window)
+        # Evening slot: around 16:30 IST (15:30 - 18:00 window)
+        if 22 <= now_ist.hour or now_ist.hour < 3:
+            allowed_channel = "ENGLISH"
+            print(f"[*] Time slot detected: Midnight window -> processing strictly ENGLISH videos.")
+        elif 15 <= now_ist.hour < 19:
+            allowed_channel = "HINDI"
+            print(f"[*] Time slot detected: Evening rush window (4:30 PM) -> processing strictly HINDI videos.")
+        else:
+            print(f"[*] Time slot ({now_ist.strftime('%H:%M')} IST) is outside designated upload windows (12:00 AM English, 4:30 PM Hindi).")
+            # If not in window, exit cleanly without processing
+            update_view_counters(youtube_services, sheets_service, spreadsheet_id, channel_tabs)
+            return
+
     if queue_rows and len(queue_rows) > 1:
         headers = [h.strip() for h in queue_rows[0]]
         for row_idx, row in enumerate(queue_rows[1:], start=2):
@@ -263,7 +295,14 @@ def process_queue():
             folder_name = row_dict.get("Folder_Name", "").strip()
             sched_time_str = row_dict.get("Scheduled_Time_UTC", "").strip()
 
+            channel_key = "HINDI" if "HINDI" in target_channel.upper() else "ENGLISH"
+
+            # Strictly enforce channel match for this schedule run
+            if allowed_channel and channel_key != allowed_channel:
+                continue
+
             if status in ["READY_FOR_UPLOAD", "PENDING", "APPROVED"]:
+
                 if sched_time_str:
                     try:
                         sched_dt = datetime.fromisoformat(sched_time_str.replace("Z", "+00:00"))
