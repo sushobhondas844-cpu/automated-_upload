@@ -11,6 +11,8 @@ description: >-
 
 # Stickman Explainer Production Workflow
 
+> **Master Standard:** All productions must strictly comply with the centralised [CONTENT_CREATION_PROTOCOL.md](../../../CONTENT_CREATION_PROTOCOL.md) (mandatory research phase, multi-cut hooks, language-specific Hinglish/English metadata research, aspect-ratio protection, and approval gates).
+
 Produce bright 2D / lightweight 2.5D stickman explainer videos cleanly with consistent voice, snappy beat cuts (every `1.5–2.8s`), pre-counted & audited contextual SFX, gentle whole-model movement (`2.5D` depth + subtle vector accents), zero watermarks, zero anatomical glitches, and zero leftover asset bloat.
 
 ## Bundled Files
