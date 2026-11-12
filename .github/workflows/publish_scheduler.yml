@@ -2,10 +2,21 @@ name: Scheduled YouTube Publisher
 
 on:
   schedule:
-    # 12:00 AM IST (Midnight) = 18:30 UTC previous day -> Publishes English videos
+    # --- ENGLISH CHANNEL WINDOW (Target: 12:00 AM Midnight IST) ---
+    # 18:30 UTC = 12:00 AM IST (Primary)
     - cron: '30 18 * * *'
-    # 04:30 PM IST (Evening rush) = 11:00 UTC -> Publishes Hindi videos
-    - cron: '0 11 * * *'
+    # 19:00 UTC = 12:30 AM IST (Fallback retry)
+    - cron: '0 19 * * *'
+    # 19:30 UTC = 01:00 AM IST (Safety net)
+    - cron: '30 19 * * *'
+
+    # --- HINDI CHANNEL WINDOW (Target: 04:30 PM IST) ---
+    # 10:45 UTC = 04:15 PM IST (Early check - avoids :00 congestion)
+    - cron: '45 10 * * *'
+    # 11:15 UTC = 04:45 PM IST (Primary off-the-hour trigger)
+    - cron: '15 11 * * *'
+    # 11:45 UTC = 05:15 PM IST (Fallback retry)
+    - cron: '45 11 * * *'
   workflow_dispatch:
     inputs:
       target_channel:
