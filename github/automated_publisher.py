@@ -267,6 +267,11 @@ def update_view_counters(youtube_services, sheets_service, spreadsheet_id, chann
         yt = youtube_services.get(channel_key)
         if not yt:
             continue
+        # Skip statistics update if channel token only has upload scope (requires readonly scope)
+        token_json = os.environ.get(f"YOUTUBE_TOKEN_{channel_key}", "")
+        if token_json and '"youtube.upload"' in token_json and '"youtube.readonly"' not in token_json:
+            print(f"[*] Skipping stats update for {tab_name} (token is upload-only).")
+            continue
         try:
             res = sheets_service.spreadsheets().values().get(
                 spreadsheetId=spreadsheet_id,
