@@ -98,8 +98,29 @@ def find_spreadsheet_id(drive_service, sheet_name):
     raise FileNotFoundError(f"Spreadsheet '{sheet_name}' not found.")
 
 
-def send_telegram_alert(text: str):
-    bot_token = (os.environ.get("BOT_TOKEN") or os.environ.get("TELEGRAM_BOT_TOKEN") or "").split("#")[0].strip()
+def send_telegram_alert(text: str, channel_key: str = None):
+    if channel_key and "HINDI" in channel_key.upper():
+        bot_token = (
+            os.environ.get("FACT_ENGINE_BOT_TOKEN")
+            or os.environ.get("BOT_TOKEN_HINDI")
+            or os.environ.get("BOT_TOKEN")
+            or os.environ.get("TELEGRAM_BOT_TOKEN")
+            or ""
+        ).split("#")[0].strip()
+    elif channel_key and "ENGLISH" in channel_key.upper():
+        bot_token = (
+            os.environ.get("BOT_TOKEN_ENGLISH")
+            or os.environ.get("BOT_TOKEN")
+            or os.environ.get("TELEGRAM_BOT_TOKEN")
+            or ""
+        ).split("#")[0].strip()
+    else:
+        bot_token = (
+            os.environ.get("BOT_TOKEN")
+            or os.environ.get("TELEGRAM_BOT_TOKEN")
+            or ""
+        ).split("#")[0].strip()
+
     chat_id = (os.environ.get("CHAT_ID") or os.environ.get("TELEGRAM_CHAT_ID") or os.environ.get("MY_TELEGRAM_CHAT_ID") or "5267470220").split("#")[0].strip()
     if not bot_token or not chat_id:
         print("[-] Skipping Telegram alert: BOT_TOKEN or CHAT_ID not set.")
@@ -110,7 +131,7 @@ def send_telegram_alert(text: str):
     req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
-            print("[+] Telegram alert sent successfully.")
+            print(f"[+] Telegram alert sent successfully (channel: {channel_key or 'default'}).")
     except Exception as e:
         print(f"[!] Warning: Failed to send Telegram alert: {e}")
 
@@ -158,8 +179,8 @@ def download_telegram_file(file_id: str, dest_path: str):
                 shutil.move(dl_path, dest_path)
 
     asyncio.run(_mtproto_download())
-    if not os.path.exists(dest_path):
-        raise FileNotFoundError(f"Failed to download Telegram file to {dest_path}")
+    if not os.path.exists(dest_path) or os.path.getsize(dest_path) == 0:
+        raise FileNotFoundError(f"Failed to download Telegram file to {dest_path} (file is missing or empty)")
     sz_mb = os.path.getsize(dest_path) / (1024 * 1024)
     print(f"[+] MTProto Download complete: {dest_path} ({sz_mb:.2f} MB)")
 
@@ -233,6 +254,14 @@ def parse_metadata_file(content_text):
 
 
 def upload_video_to_youtube(youtube_service, file_path, meta):
+    if not os.path.exists(file_path) or os.path.getsize(file_path) < 1024 * 1024:
+        raise ValueError(
+            f"Pre-upload check failed: Video file '{file_path}' does not exist or is too small "
+            f"({os.path.getsize(file_path) if os.path.exists(file_path) else 0} bytes). Must be >= 1MB."
+        )
+
+    sz_mb = os.path.getsize(file_path) / (1024 * 1024)
+    print(f"[*] Pre-upload check passed! Video size: {sz_mb:.2f} MB")
     print(f"[*] Uploading to YouTube: '{meta['title']}' [{meta['privacy']}]")
     body = {
         "snippet": {
@@ -258,6 +287,20 @@ def upload_video_to_youtube(youtube_service, file_path, meta):
     video_id = response.get("id")
     watch_url = f"https://youtu.be/{video_id}"
     print(f"[+] Upload successful! Video URL: {watch_url}")
+
+    # Post-upload status verification
+    try:
+        status_check = youtube_service.videos().list(part="status", id=video_id).execute()
+        items = status_check.get("items", [])
+        if items:
+            up_status = items[0].get("status", {}).get("uploadStatus", "unknown")
+            print(f"[*] YouTube post-upload status: {up_status}")
+            if up_status == "rejected":
+                rej_reason = items[0].get("status", {}).get("rejectionReason", "unknown")
+                raise RuntimeError(f"YouTube rejected the upload: {rej_reason}")
+    except Exception as e:
+        print(f"[*] Post-upload check notice: {e}")
+
     return video_id, watch_url
 
 
@@ -443,7 +486,8 @@ def process_queue():
                         f"📌 Channel: {dest_tab}\n"
                         f"🎬 Title: {meta['title']}\n"
                         f"🔗 Link: {watch_url}\n"
-                        f"🕒 Uploaded: {now_ist.strftime('%Y-%m-%d %H:%M IST')}"
+                        f"🕒 Uploaded: {now_ist.strftime('%Y-%m-%d %H:%M IST')}",
+                        channel_key=channel_key
                     )
                 break
 
@@ -541,12 +585,13 @@ def process_queue():
                             f"🚨 Backlog Status: Only {remaining_backups} standby backup(s) remaining in pool!\n"
                             f"Please render new videos to refill the safety buffer."
                         )
-                        send_telegram_alert(alert_msg)
+                        send_telegram_alert(alert_msg, channel_key=allowed_channel)
                 else:
                     print(f"[-] No STANDBY videos found in Backup_Pool for channel {allowed_channel}.")
                     send_telegram_alert(
                         f"🚨 CRITICAL WARNING: No fresh video scheduled AND Backup_Pool is EMPTY for {allowed_channel}!\n"
-                        f"No video could be published today. Please generate new content immediately."
+                        f"No video could be published today. Please generate new content immediately.",
+                        channel_key=allowed_channel
                     )
         except Exception as e:
             print(f"[!] Warning querying Backup_Pool: {e}")

@@ -47,6 +47,9 @@ jobs:
           YOUTUBE_TOKEN_ENGLISH: ${{ secrets.YOUTUBE_TOKEN_ENGLISH }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
+          FACT_ENGINE_BOT_TOKEN: ${{ secrets.FACT_ENGINE_BOT_TOKEN || secrets.BOT_TOKEN_HINDI }}
+          BOT_TOKEN_HINDI: ${{ secrets.BOT_TOKEN_HINDI || secrets.FACT_ENGINE_BOT_TOKEN }}
+          BOT_TOKEN_ENGLISH: ${{ secrets.BOT_TOKEN_ENGLISH || secrets.BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || secrets.CHAT_ID || secrets.MY_TELEGRAM_CHAT_ID || '5267470220' }}
           CHAT_ID: ${{ secrets.CHAT_ID || secrets.TELEGRAM_CHAT_ID || secrets.MY_TELEGRAM_CHAT_ID || '5267470220' }}
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID || '30360141' }}
@@ -61,6 +64,9 @@ jobs:
           YOUTUBE_TOKEN_ENGLISH: ${{ secrets.YOUTUBE_TOKEN_ENGLISH }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
+          FACT_ENGINE_BOT_TOKEN: ${{ secrets.FACT_ENGINE_BOT_TOKEN || secrets.BOT_TOKEN_HINDI }}
+          BOT_TOKEN_HINDI: ${{ secrets.BOT_TOKEN_HINDI || secrets.FACT_ENGINE_BOT_TOKEN }}
+          BOT_TOKEN_ENGLISH: ${{ secrets.BOT_TOKEN_ENGLISH || secrets.BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || secrets.CHAT_ID || secrets.MY_TELEGRAM_CHAT_ID || '5267470220' }}
           CHAT_ID: ${{ secrets.CHAT_ID || secrets.TELEGRAM_CHAT_ID || secrets.MY_TELEGRAM_CHAT_ID || '5267470220' }}
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID || '30360141' }}
