@@ -47,9 +47,8 @@ jobs:
           YOUTUBE_TOKEN_ENGLISH: ${{ secrets.YOUTUBE_TOKEN_ENGLISH }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
-          FACT_ENGINE_BOT_TOKEN: ${{ secrets.FACT_ENGINE_BOT_TOKEN || secrets.BOT_TOKEN_HINDI }}
-          BOT_TOKEN_HINDI: ${{ secrets.BOT_TOKEN_HINDI || secrets.FACT_ENGINE_BOT_TOKEN }}
-          BOT_TOKEN_ENGLISH: ${{ secrets.BOT_TOKEN_ENGLISH || secrets.BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
+          DAILY_FUN_FACTS: ${{ secrets.DAILY_FUN_FACTS || secrets.DAILY_FUN_FACTS_BOT_TOKEN || secrets.BOT_TOKEN_DAILY_FUN_FACTS || secrets.FACT_ENGINE_BOT_TOKEN }}
+          HOW_DID_THAT_HAPPEN: ${{ secrets.HOW_DID_THAT_HAPPEN || secrets.HOW_DID_THAT_HAPPEN_BOT_TOKEN || secrets.BOT_TOKEN_HOW_DID_THAT_HAPPEN || secrets.BOT_TOKEN_ENGLISH }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || secrets.CHAT_ID || secrets.MY_TELEGRAM_CHAT_ID || '5267470220' }}
           CHAT_ID: ${{ secrets.CHAT_ID || secrets.TELEGRAM_CHAT_ID || secrets.MY_TELEGRAM_CHAT_ID || '5267470220' }}
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID || '30360141' }}
@@ -64,9 +63,8 @@ jobs:
           YOUTUBE_TOKEN_ENGLISH: ${{ secrets.YOUTUBE_TOKEN_ENGLISH }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
-          FACT_ENGINE_BOT_TOKEN: ${{ secrets.FACT_ENGINE_BOT_TOKEN || secrets.BOT_TOKEN_HINDI }}
-          BOT_TOKEN_HINDI: ${{ secrets.BOT_TOKEN_HINDI || secrets.FACT_ENGINE_BOT_TOKEN }}
-          BOT_TOKEN_ENGLISH: ${{ secrets.BOT_TOKEN_ENGLISH || secrets.BOT_TOKEN || secrets.TELEGRAM_BOT_TOKEN }}
+          DAILY_FUN_FACTS: ${{ secrets.DAILY_FUN_FACTS || secrets.DAILY_FUN_FACTS_BOT_TOKEN || secrets.BOT_TOKEN_DAILY_FUN_FACTS || secrets.FACT_ENGINE_BOT_TOKEN }}
+          HOW_DID_THAT_HAPPEN: ${{ secrets.HOW_DID_THAT_HAPPEN || secrets.HOW_DID_THAT_HAPPEN_BOT_TOKEN || secrets.BOT_TOKEN_HOW_DID_THAT_HAPPEN || secrets.BOT_TOKEN_ENGLISH }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || secrets.CHAT_ID || secrets.MY_TELEGRAM_CHAT_ID || '5267470220' }}
           CHAT_ID: ${{ secrets.CHAT_ID || secrets.TELEGRAM_CHAT_ID || secrets.MY_TELEGRAM_CHAT_ID || '5267470220' }}
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID || '30360141' }}

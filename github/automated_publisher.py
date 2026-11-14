@@ -69,8 +69,20 @@ def get_google_clients():
 
 
 def get_youtube_client(channel_key):
-    secret_key = "YOUTUBE_TOKEN_HINDI" if "HINDI" in channel_key.upper() else "YOUTUBE_TOKEN_ENGLISH"
-    token_json = os.environ.get(secret_key)
+    ck = channel_key.upper()
+    if "HINDI" in ck or "DAILY_FUN_FACTS" in ck:
+        token_json = (
+            os.environ.get("YOUTUBE_TOKEN_DAILY_FUN_FACTS")
+            or os.environ.get("YOUTUBE_TOKEN_HINDI")
+        )
+        secret_key = "YOUTUBE_TOKEN_HINDI / YOUTUBE_TOKEN_DAILY_FUN_FACTS"
+    else:
+        token_json = (
+            os.environ.get("YOUTUBE_TOKEN_HOW_DID_THAT_HAPPEN")
+            or os.environ.get("YOUTUBE_TOKEN_ENGLISH")
+        )
+        secret_key = "YOUTUBE_TOKEN_ENGLISH / YOUTUBE_TOKEN_HOW_DID_THAT_HAPPEN"
+
     if not token_json:
         raise ValueError(f"Missing YouTube OAuth secret: {secret_key}")
 
@@ -99,31 +111,40 @@ def find_spreadsheet_id(drive_service, sheet_name):
 
 
 def send_telegram_alert(text: str, channel_key: str = None):
-    if channel_key and "HINDI" in channel_key.upper():
+    bot_token = ""
+    target_name = "default"
+
+    if channel_key and ("HINDI" in channel_key.upper() or "DAILY_FUN_FACTS" in channel_key.upper()):
         bot_token = (
-            os.environ.get("FACT_ENGINE_BOT_TOKEN")
+            os.environ.get("DAILY_FUN_FACTS")
+            or os.environ.get("DAILY_FUN_FACTS_BOT_TOKEN")
+            or os.environ.get("BOT_TOKEN_DAILY_FUN_FACTS")
+            or os.environ.get("FACT_ENGINE_BOT_TOKEN")
             or os.environ.get("BOT_TOKEN_HINDI")
-            or os.environ.get("BOT_TOKEN")
-            or os.environ.get("TELEGRAM_BOT_TOKEN")
             or ""
         ).split("#")[0].strip()
-    elif channel_key and "ENGLISH" in channel_key.upper():
+        target_name = "Daily Fun Facts (Notification Bot)"
+    elif channel_key and ("ENGLISH" in channel_key.upper() or "HOW_DID_THAT_HAPPEN" in channel_key.upper()):
         bot_token = (
-            os.environ.get("BOT_TOKEN_ENGLISH")
-            or os.environ.get("BOT_TOKEN")
-            or os.environ.get("TELEGRAM_BOT_TOKEN")
+            os.environ.get("HOW_DID_THAT_HAPPEN")
+            or os.environ.get("HOW_DID_THAT_HAPPEN_BOT_TOKEN")
+            or os.environ.get("BOT_TOKEN_HOW_DID_THAT_HAPPEN")
+            or os.environ.get("BOT_TOKEN_ENGLISH")
             or ""
         ).split("#")[0].strip()
+        target_name = "How Did That Happen (Notification Bot)"
     else:
         bot_token = (
-            os.environ.get("BOT_TOKEN")
-            or os.environ.get("TELEGRAM_BOT_TOKEN")
+            os.environ.get("DAILY_FUN_FACTS")
+            or os.environ.get("HOW_DID_THAT_HAPPEN")
+            or os.environ.get("BOT_TOKEN")
             or ""
         ).split("#")[0].strip()
+        target_name = channel_key or "default"
 
     chat_id = (os.environ.get("CHAT_ID") or os.environ.get("TELEGRAM_CHAT_ID") or os.environ.get("MY_TELEGRAM_CHAT_ID") or "5267470220").split("#")[0].strip()
     if not bot_token or not chat_id:
-        print("[-] Skipping Telegram alert: BOT_TOKEN or CHAT_ID not set.")
+        print(f"[-] Skipping Telegram alert for {target_name}: Token or CHAT_ID not set.")
         return
 
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
@@ -131,15 +152,16 @@ def send_telegram_alert(text: str, channel_key: str = None):
     req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
-            print(f"[+] Telegram alert sent successfully (channel: {channel_key or 'default'}).")
+            print(f"[+] Telegram notification sent via {target_name} successfully.")
     except Exception as e:
-        print(f"[!] Warning: Failed to send Telegram alert: {e}")
+        print(f"[!] Warning: Failed to send Telegram alert via {target_name}: {e}")
 
 
 def download_telegram_file(file_id: str, dest_path: str):
-    bot_token = (os.environ.get("BOT_TOKEN") or os.environ.get("TELEGRAM_BOT_TOKEN") or "").split("#")[0].strip()
+    # Strictly uses Video Storage Vault bot to fetch uncompressed files
+    bot_token = (os.environ.get("STORAGE_BOT_TOKEN") or os.environ.get("BOT_TOKEN") or os.environ.get("TELEGRAM_BOT_TOKEN") or "").split("#")[0].strip()
     if not bot_token:
-        raise ValueError("Missing BOT_TOKEN or TELEGRAM_BOT_TOKEN.")
+        raise ValueError("Missing Video Storage BOT_TOKEN / TELEGRAM_BOT_TOKEN for downloading vaulted media.")
 
     api_id_raw = (os.environ.get("TELEGRAM_API_ID") or "30360141").split("#")[0].strip()
     api_id = int(api_id_raw)
