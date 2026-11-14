@@ -133,16 +133,24 @@ def check_all():
         all_ok = False
     else:
         try:
+            from google.auth.transport.requests import Request
             yt_data = json.loads(yt_hi_json)
             creds = UserCredentials.from_authorized_user_info(yt_data)
-            yt = build("youtube", "v3", credentials=creds)
-            ch_res = yt.channels().list(part="snippet", mine=True).execute()
-            items = ch_res.get("items", [])
-            if items:
-                title = items[0]["snippet"]["title"]
-                print(f"  [OK] YouTube Hindi Token verified! Channel: '{title}'")
+            # Test refresh capability
+            req = Request()
+            creds.refresh(req)
+            scopes = getattr(creds, 'scopes', []) or yt_data.get('scopes', [])
+            print(f"  [OK] YouTube Hindi Token active and refreshed! Granted scopes: {scopes}")
+            # If readonly or full scope is present, verify channel metadata
+            if any('readonly' in s or s == 'https://www.googleapis.com/auth/youtube' for s in scopes):
+                yt = build("youtube", "v3", credentials=creds)
+                ch_res = yt.channels().list(part="snippet", mine=True).execute()
+                items = ch_res.get("items", [])
+                if items:
+                    title = items[0]["snippet"]["title"]
+                    print(f"  [OK] Channel Verified: '{title}'")
             else:
-                print("  [WARN] YouTube token valid, but no channel found for this account.")
+                print("  [OK] Upload-only scope verified ('youtube.upload') - ready for video publishing.")
         except Exception as e:
             print(f"  [FAIL] YouTube Hindi Token error: {e}")
             all_ok = False

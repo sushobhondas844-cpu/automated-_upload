@@ -79,7 +79,8 @@ def get_youtube_client(channel_key):
     else:
         token_data = json.loads(base64.b64decode(token_json).decode("utf-8"))
 
-    creds = UserCredentials.from_authorized_user_info(token_data, scopes=SCOPES_YOUTUBE)
+    token_scopes = token_data.get("scopes") or SCOPES_YOUTUBE
+    creds = UserCredentials.from_authorized_user_info(token_data, scopes=token_scopes)
     return build("youtube", "v3", credentials=creds)
 
 
